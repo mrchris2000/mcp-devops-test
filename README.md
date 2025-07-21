@@ -60,19 +60,6 @@ This server provides test execution functionality, the author is not liable for 
 
 The server requires configuration for authentication and connection to your Test instance. You can provide configuration in several ways:
 
-### Manual Setup
-
-Create a `.env` file in the project root and add your configuration values:
-
-```bash
-# Copy the example below and fill in your actual values
-TEST_ACCESS_TOKEN=your_base64_encoded_token_here
-TEST_SERVER_URL=https://your-test-server.com/test
-TEST_TEAMSPACE_ID=your-teamspace-id-here
-KEYCLOAK_CLIENT_ID=your-keycloak-client-id
-KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
-```
-
 ### Option 1: Environment Variables
 
 Set the following environment variables:
