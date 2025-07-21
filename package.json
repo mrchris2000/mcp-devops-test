@@ -1,0 +1,51 @@
+{
+  "name": "@securedevops/mcp-devops-test",
+  "version": "0.1.22",
+  "description": "A Model Context Protocol (MCP) server for DevOps Test work item management",
+  "type": "module",
+  "main": "src/lib/server.js",
+  "bin": {
+    "mcp-devops-test": "./src/lib/server.js"
+  },
+  "files": [
+    "src/",
+    "setup.js",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test-package.js",
+    "setup": "node setup.js",
+    "start": "node src/lib/server.js",
+    "prepublishOnly": "npm run test"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol", 
+    "devops",
+    "test",
+    "loop",
+    "workitem",
+    "work-item-management",
+    "cli"
+  ],
+  "author": "Chris Haggan",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/securedevops/mcp-devops-test.git"
+  },
+  "homepage": "https://github.com/securedevops/mcp-devops-test#readme",
+  "bugs": {
+    "url": "https://github.com/securedevops/mcp-devops-test/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "dotenv": "^16.0.0",
+    "zod": "^3.0.0"
+  }
+}
