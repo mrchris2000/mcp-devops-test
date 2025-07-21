@@ -78,6 +78,8 @@ Set the following environment variables:
 export TEST_ACCESS_TOKEN="your_base64_encoded_token_here"
 export TEST_SERVER_URL="https://your-test-server.com/test"
 export TEST_TEAMSPACE_ID="your-teamspace-id-here"
+export KEYCLOAK_CLIENT_ID="your-keycloak-client-id"
+export KEYCLOAK_CLIENT_SECRET="your-keycloak-client-secret"
 ```
 
 ### Option 2: Command Line Arguments
@@ -85,7 +87,7 @@ export TEST_TEAMSPACE_ID="your-teamspace-id-here"
 Pass configuration as command line arguments:
 
 ```bash
-node src/lib/server.js --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id"
+node src/lib/server.js --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret"
 ```
 
 ### Option 3: Environment File
@@ -104,14 +106,14 @@ cp .env.example .env
 You can run the MCP server directly without installation:
 
 ```bash
-npx @securedevops/mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id"
+npx @securedevops/mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret"
 ```
 
 ### Option 2: Global Installation
 
 ```bash
 npm install -g @securedevops/mcp-devops-test
-mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id"
+mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret"
 ```
 
 ### Option 3: Local Development
@@ -139,7 +141,9 @@ Add the following to your Claude Desktop MCP configuration:
         "@securedevops/mcp-devops-test",
         "--token", "your_token_here",
         "--server-url", "https://your-server.com/test",
-        "--teamspace-id", "your_teamspace_id"
+        "--teamspace-id", "your_teamspace_id",
+        "--keycloak-client-id", "your_client_id",
+        "--keycloak-client-secret", "your_client_secret"
       ]
     }
   }
@@ -157,7 +161,9 @@ Add the following to your Claude Desktop MCP configuration:
       "env": {
         "TEST_ACCESS_TOKEN": "your_token_here",
         "TEST_SERVER_URL": "https://your-server.com/test",
-        "TEST_TEAMSPACE_ID": "your_teamspace_id"
+        "TEST_TEAMSPACE_ID": "your_teamspace_id",
+        "KEYCLOAK_CLIENT_ID": "your_client_id",
+        "KEYCLOAK_CLIENT_SECRET": "your_client_secret"
       }
     }
   }
@@ -177,7 +183,9 @@ Add the following to your Claude Desktop MCP configuration:
       "env": {
         "TEST_ACCESS_TOKEN": "your_token_here",
         "TEST_SERVER_URL": "https://your-server.com/test",
-        "TEST_TEAMSPACE_ID": "your_teamspace_id"
+        "TEST_TEAMSPACE_ID": "your_teamspace_id",
+        "KEYCLOAK_CLIENT_ID": "your_client_id",
+        "KEYCLOAK_CLIENT_SECRET": "your_client_secret"
       }
     }
   }
@@ -195,7 +203,9 @@ Or with command line arguments:
         "/path/to/mcp-devops-test/src/lib/server.js",
         "--token", "your_token_here",
         "--server-url", "https://your-server.com/test",
-        "--teamspace-id", "your_teamspace_id"
+        "--teamspace-id", "your_teamspace_id",
+        "--keycloak-client-id", "your_client_id",
+        "--keycloak-client-secret", "your_client_secret"
       ]
     }
   }
