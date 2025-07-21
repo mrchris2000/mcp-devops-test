@@ -60,15 +60,18 @@ This server provides test execution functionality, the author is not liable for 
 
 The server requires configuration for authentication and connection to your Test instance. You can provide configuration in several ways:
 
-### Quick Setup (Recommended)
+### Manual Setup
 
-Run the interactive setup script:
+Create a `.env` file in the project root and add your configuration values:
 
 ```bash
-npm run setup
+# Copy the example below and fill in your actual values
+TEST_ACCESS_TOKEN=your_base64_encoded_token_here
+TEST_SERVER_URL=https://your-test-server.com/test
+TEST_TEAMSPACE_ID=your-teamspace-id-here
+KEYCLOAK_CLIENT_ID=your-keycloak-client-id
+KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
 ```
-
-This will prompt you for your configuration values and create a `.env` file automatically.
 
 ### Option 1: Environment Variables
 
@@ -92,14 +95,23 @@ node src/lib/server.js --token "your_token" --server-url "https://your-server.co
 
 ### Option 3: Environment File
 
-Copy `.env.example` to `.env` and fill in your values:
+Create a `.env` file in the project root with your values:
 
 ```bash
-cp .env.example .env
-# Edit .env with your actual configuration values
+# Create .env file with your actual configuration values
+TEST_ACCESS_TOKEN=your_base64_encoded_token_here
+TEST_SERVER_URL=https://your-test-server.com/test
+TEST_TEAMSPACE_ID=your-teamspace-id-here
+KEYCLOAK_CLIENT_ID=your-keycloak-client-id
+KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
 ```
 
 ## Installation
+
+### Prerequisites
+
+- Node.js >= 18.0.0
+- npm or yarn package manager
 
 ### Option 1: Direct NPX Usage (Recommended)
 
@@ -118,12 +130,21 @@ mcp-devops-test --token "your_token" --server-url "https://your-server.com/test"
 
 ### Option 3: Local Development
 
+For development or customization:
+
 ```bash
+# Clone the repository
 git clone https://github.com/securedevops/mcp-devops-test.git
 cd mcp-devops-test
+
+# Install dependencies
 npm install
-npm run setup  # Interactive configuration setup
-npm start      # Start the MCP server
+
+# Create configuration file (see Configuration section below)
+# Create .env file with your configuration values
+
+# Start the MCP server
+npm start
 ```
 
 ## Use with Claude Desktop

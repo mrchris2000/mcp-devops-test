@@ -9,14 +9,11 @@
   },
   "files": [
     "src/",
-    "setup.js",
-    ".env.example",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "node test-package.js",
-    "setup": "node setup.js",
     "start": "node src/lib/server.js",
     "prepublishOnly": "npm run test"
   },
