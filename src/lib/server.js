@@ -6,6 +6,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { config as loadEnv } from 'dotenv';
 import { createKeycloakAuthFromEnv } from './keycloak-auth.js';
+import unzipper from 'unzipper';
+import stream from 'stream';
 
 // Load environment variables from .env file if it exists
 loadEnv();
@@ -36,6 +38,9 @@ function getConfig() {
             case '--keycloak-client-secret':
                 config.keycloakClientSecret = value;
                 break;
+            case '--keycloak-realm':
+                config.keycloakRealm = value;
+                break;
         }
     }
     
@@ -45,6 +50,7 @@ function getConfig() {
     const teamspaceID = config.teamspaceId || process.env.TEST_TEAMSPACE_ID;
     const keycloakClientId = config.keycloakClientId || process.env.KEYCLOAK_CLIENT_ID;
     const keycloakClientSecret = config.keycloakClientSecret || process.env.KEYCLOAK_CLIENT_SECRET;
+    const keycloakRealm = config.keycloakRealm || process.env.KEYCLOAK_REALM || 'devops-automation';
     
     // Validate required configuration
     if (!personal_access_token_string) {
@@ -62,12 +68,13 @@ function getConfig() {
         serverURL, 
         teamspaceID, 
         keycloakClientId, 
-        keycloakClientSecret 
+        keycloakClientSecret,
+        keycloakRealm
     };
 }
 
 // Get configuration at startup
-const { personal_access_token_string, serverURL, teamspaceID, keycloakClientId, keycloakClientSecret } = getConfig();
+const { personal_access_token_string, serverURL, teamspaceID, keycloakClientId, keycloakClientSecret, keycloakRealm } = getConfig();
 
 // Create an MCP server
 const server = new McpServer({
@@ -89,7 +96,7 @@ async function initializeAuthentication() {
             // Create custom config with MCP parameters
             const config = {
                 serverURL: serverURL,
-                realm: 'devops-automation',
+                realm: keycloakRealm,
                 clientId: keycloakClientId || process.env.KEYCLOAK_CLIENT_ID || 'testserver',
                 clientSecret: keycloakClientSecret || process.env.KEYCLOAK_CLIENT_SECRET,
                 offlineToken: personal_access_token_string
@@ -156,6 +163,88 @@ async function getDefaultHeaders() {
 // Cleanup handler
 async function cleanup() {
     process.exit(0);
+}
+
+// Function to parse test log JSON and extract useful information
+function parseTestLog(testLogJSON) {
+    const results = {
+        summary: {},
+        steps: [],
+        failures: [],
+        screenshots: [],
+        artifacts: []
+    };
+
+    // Extract basic summary information
+    if (testLogJSON.id) results.summary.id = testLogJSON.id;
+    if (testLogJSON.initiatedByUser) results.summary.initiatedByUser = testLogJSON.initiatedByUser;
+    if (testLogJSON.startTime) results.summary.startTime = testLogJSON.startTime;
+    if (testLogJSON.endTime) results.summary.endTime = testLogJSON.endTime;
+    if (testLogJSON.duration) results.summary.duration = testLogJSON.duration;
+    if (testLogJSON.verdict) results.summary.verdict = testLogJSON.verdict;
+    if (testLogJSON.status) results.summary.status = testLogJSON.status;
+
+    // Recursive function to extract steps and failures
+    const extractStepsAndFailures = (logItem, parentPath = '', level = 0) => {
+        if (!logItem) return;
+
+        // Process the current item
+        if (logItem.properties && (logItem.properties.name || logItem.type)) {
+            const step = {
+                id: logItem.id,
+                path: parentPath ? `${parentPath}.${logItem.id}` : logItem.id,
+                name: logItem.properties.name || logItem.type || 'Unnamed step',
+                type: logItem.type,
+                startTime: logItem.time,
+                endTime: logItem.end ? logItem.end.time : null,
+                duration: logItem.end ? logItem.end.duration : null,
+                verdict: logItem.end ? logItem.end.properties?.verdict : 'UNKNOWN',
+                properties: logItem.properties,
+                level: level
+            };
+            
+            results.steps.push(step);
+
+            // Check for failures
+            if (step.verdict === 'FAIL') {
+                const failure = {
+                    stepId: step.id,
+                    name: step.name,
+                    type: step.type,
+                    time: step.endTime || step.startTime,
+                    reason: logItem.end?.properties?.reason || 'Unknown failure',
+                    message: logItem.end?.properties?.message || null,
+                    stacktrace: logItem.end?.properties?.stacktrace || null,
+                    screenshot: logItem.end?.properties?.screenshot || null,
+                    properties: step.properties
+                };
+                results.failures.push(failure);
+            }
+        }
+
+        // Process events
+        if (logItem.events && Array.isArray(logItem.events)) {
+            for (const event of logItem.events) {
+                extractStepsAndFailures(event, parentPath ? `${parentPath}.${logItem.id}` : logItem.id, level + 1);
+            }
+        }
+
+        // Process nested items if they exist
+        if (logItem.items && Array.isArray(logItem.items)) {
+            for (const item of logItem.items) {
+                extractStepsAndFailures(item, parentPath ? `${parentPath}.${logItem.id}` : logItem.id, level + 1);
+            }
+        }
+    };
+
+    // Start extraction from the root
+    if (Array.isArray(testLogJSON)) {
+        testLogJSON.forEach(item => extractStepsAndFailures(item));
+    } else {
+        extractStepsAndFailures(testLogJSON);
+    }
+
+    return results;
 }
 
 process.on('SIGTERM', cleanup);
@@ -778,304 +867,160 @@ server.tool(
     }
 );
 
+// Tool to prepare download and get download ID from location header
+server.tool(
+  "prepare_test_download",
+  "Prepare test result download and extract download ID from location header",
+  {
+    projectId: z.string().describe("The ID of the project containing the test"),
+    resultId: z.string().describe("The result ID from the test execution")
+  },
+  async (args) => {
+    try {
+      if (!keycloakAuth) {
+        const authSuccess = await setupAuthentication();
+        if (!authSuccess) {
+          throw new Error("Authentication failed");
+        }
+      }
+
+      const cleanServerURL = serverURL.replace('/#', '');
+      const url = new URL(cleanServerURL);
+      const baseURL = `${url.protocol}//${url.host}`;
+      const headers = await getDefaultHeaders();
+
+      const prepareUrl = `${baseURL}/test/rest/projects/${args.projectId}/results/${args.resultId}/reports/testlog/download`;
+      console.log(`Preparing download from: ${prepareUrl}`);
+
+      const prepareResponse = await fetch(prepareUrl, {
+        method: 'POST',
+        headers: headers
+      });
+
+      if (!prepareResponse.ok) {
+        throw new Error(`Failed to prepare download: ${prepareResponse.status} ${prepareResponse.statusText}`);
+      }
+
+      // Extract download ID from location header
+      const locationHeader = prepareResponse.headers.get('location');
+      if (!locationHeader) {
+        throw new Error('No location header found in response');
+      }
+
+      // Extract download ID from location path (e.g., /test/rest/projects/1150/downloads/1556 -> 1556)
+      const downloadIdMatch = locationHeader.match(/\/downloads\/(\d+)$/);
+      if (!downloadIdMatch) {
+        throw new Error(`Could not extract download ID from location header: ${locationHeader}`);
+      }
+
+      const downloadId = downloadIdMatch[1];
+
+      return {
+        content: [{ 
+          type: 'text', 
+          text: `Download preparation successful!\n\n**Project ID**: ${args.projectId}\n**Result ID**: ${args.resultId}\n**Download ID**: ${downloadId}\n**Location Header**: ${locationHeader}\n**Prepare URL**: ${prepareUrl}\n\nUse the download ID "${downloadId}" with the get_test_log_results tool to download and analyze the test logs.` 
+        }]
+      };
+
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error preparing test download: ${error.message}` }]
+      };
+    }
+  }
+);
+
 // Tool to get test log results by downloading the zip archive
 server.tool(
-    "get_test_log_results",
-    "Download and analyze test log results from the zip archive",
-    {
-        projectId: z.string().describe("The ID of the project containing the test"),
-        downloadId: z.string().describe("The download ID for the result archive (e.g., from result execution)")
-    },
-    async (args) => {
-        try {
-            // Setup authentication if not already done
-            if (!keycloakAuth) {
-                const authSuccess = await setupAuthentication();
-                if (!authSuccess) {
-                    throw new Error("Authentication failed");
-                }
-            }
-
-            const cleanServerURL = serverURL.replace('/#', '');
-            const url = new URL(cleanServerURL);
-            const baseURL = `${url.protocol}//${url.host}`;
-            
-            const headers = await getDefaultHeaders();
-            
-            // Download the zip file
-            const downloadUrl = `${baseURL}/test/rest/projects/${args.projectId}/downloads/${args.downloadId}`;
-            console.log(`Downloading test results from: ${downloadUrl}`);
-            
-            const downloadResponse = await fetch(downloadUrl, {
-                method: 'GET',
-                headers: headers
-            });
-
-            if (!downloadResponse.ok) {
-                throw new Error(`Failed to download results: ${downloadResponse.status} ${downloadResponse.statusText}`);
-            }
-
-            // Get the zip content as buffer
-            const zipBuffer = await downloadResponse.arrayBuffer();
-            console.log(`Downloaded zip file, size: ${zipBuffer.byteLength} bytes`);
-
-            // For now, we'll focus on extracting and parsing testlog.json
-            // In a real implementation, you'd use a zip library like 'yauzl' or 'node-stream-zip'
-            // But for this MCP tool, we'll simulate the parsing based on the provided testlog.json structure
-            
-            // Parse the test log structure (simulated - in reality this would be extracted from zip)
-            const parseTestLog = (logData) => {
-                if (!Array.isArray(logData)) {
-                    console.warn("Log data is not an array, attempting to parse as single object");
-                    logData = [logData];
-                }
-
-                const results = {
-                    summary: {},
-                    steps: [],
-                    failures: [],
-                    timeline: [],
-                    metadata: {}
-                };
-
-                logData.forEach(item => {
-                    // Extract basic test information
-                    if (item.type === "com.hcl.onetest.results:1.Namespace::createResult") {
-                        results.summary = {
-                            id: item.id,
-                            startTime: item.time,
-                            startedActivity: item.startedActivity,
-                            bucketId: item.startedActivity?.properties?.bucketId,
-                            initiatedByUser: item.startedActivity?.properties?.initiatedByUser
-                        };
-                    }
-
-                    // Parse events recursively to extract test steps
-                    const parseEvents = (events, parentPath = '', level = 0) => {
-                        if (!events || !Array.isArray(events)) return;
-
-                        events.forEach((event, index) => {
-                            const stepId = event.id;
-                            const stepPath = parentPath ? `${parentPath}.${stepId}` : stepId;
-                            
-                            // Identify step types and extract meaningful information
-                            const step = {
-                                id: stepId,
-                                path: stepPath,
-                                level: level,
-                                type: event.type,
-                                time: event.time,
-                                properties: event.properties || {},
-                                verdict: null,
-                                duration: null,
-                                endTime: null,
-                                reason: null,
-                                message: null,
-                                screenshot: null,
-                                metadata: null,
-                                stacktrace: null
-                            };
-
-                            // Determine step name and description
-                            if (event.properties) {
-                                step.name = event.properties.name || 
-                                           event.properties.label || 
-                                           event.properties.message ||
-                                           event.type.split('::').pop();
-                                step.description = event.properties.message || 
-                                                 event.properties.url ||
-                                                 event.properties.value;
-                            } else {
-                                step.name = event.type.split('::').pop();
-                            }
-
-                            // Check if this is a test step with meaningful content
-                            const isSignificantStep = event.type.includes('step') || 
-                                                    event.type.includes('test') ||
-                                                    event.type.includes('open') ||
-                                                    event.type.includes('click') ||
-                                                    event.type.includes('type') ||
-                                                    event.type.includes('verify') ||
-                                                    event.type.includes('with') ||
-                                                    event.type.includes('press');
-
-                            // Look for activity end markers to get results
-                            if (event.startedActivity) {
-                                step.hasSubActivity = true;
-                                step.activityType = event.startedActivity.type;
-                            }
-
-                            // Process sub-events to find completion status
-                            if (event.events && Array.isArray(event.events)) {
-                                event.events.forEach(subEvent => {
-                                    if (subEvent.type.includes('::end') || subEvent.type.includes('emulatable::end')) {
-                                        step.verdict = subEvent.properties?.verdict || 'UNKNOWN';
-                                        step.reason = subEvent.properties?.reason;
-                                        step.message = subEvent.properties?.message;
-                                        step.screenshot = subEvent.properties?.shot;
-                                        step.metadata = subEvent.properties?.metadata;
-                                        step.stacktrace = subEvent.properties?.stacktrace;
-                                        step.endTime = subEvent.time;
-                                        if (step.time) {
-                                            step.duration = subEvent.time - step.time;
-                                        }
-                                    }
-                                });
-
-                                // Recursively process sub-events
-                                parseEvents(event.events, stepPath, level + 1);
-                            }
-
-                            // Add to steps if it's significant
-                            if (isSignificantStep || step.verdict) {
-                                results.steps.push(step);
-                                
-                                // Track failures
-                                if (step.verdict === 'FAIL') {
-                                    results.failures.push({
-                                        ...step,
-                                        failureAnalysis: {
-                                            stepNumber: results.steps.length,
-                                            failureType: step.reason || 'Unknown',
-                                            errorMessage: step.message,
-                                            hasScreenshot: !!step.screenshot,
-                                            hasStacktrace: !!step.stacktrace,
-                                            hasMetadata: !!step.metadata
-                                        }
-                                    });
-                                }
-                            }
-
-                            // Add to timeline
-                            results.timeline.push({
-                                time: step.time,
-                                type: step.type,
-                                name: step.name,
-                                verdict: step.verdict,
-                                level: level
-                            });
-                        });
-                    };
-
-                    // Parse the main events
-                    if (item.events) {
-                        parseEvents(item.events);
-                    }
-                });
-
-                return results;
-            };
-
-            // Since we can't actually extract from zip in this context, 
-            // we'll use the provided testlog.json structure as a template
-            // and provide analysis based on that format
-            
-            let reportText = `# Test Log Results Analysis (Download Method)\n\n`;
-            reportText += `**Project ID**: ${args.projectId}\n`;
-            reportText += `**Download ID**: ${args.downloadId}\n`;
-            reportText += `**Download URL**: ${downloadUrl}\n`;
-            reportText += `**Archive Size**: ${zipBuffer.byteLength} bytes\n\n`;
-
-            reportText += `## 📁 Archive Download Status\n`;
-            reportText += `✅ Successfully downloaded zip archive from downloads endpoint\n`;
-            reportText += `📊 Archive contains test execution logs in JSON format\n`;
-            reportText += `🔍 This method provides access to detailed hierarchical test data\n\n`;
-
-            reportText += `## 🆚 Comparison with API Endpoint Method\n`;
-            reportText += `**Advantages of Download Method:**\n`;
-            reportText += `- ✅ Direct access to complete test log data\n`;
-            reportText += `- ✅ No authentication issues with hierarchical data\n`;
-            reportText += `- ✅ Single request gets all test information\n`;
-            reportText += `- ✅ Includes detailed step-by-step execution flow\n`;
-            reportText += `- ✅ Contains failure details, screenshots, and metadata\n\n`;
-
-            reportText += `**Structure Analysis Based on Sample testlog.json:**\n`;
-            reportText += `The downloaded archive contains testlog.json with the following structure:\n\n`;
-            reportText += `### Root Level:\n`;
-            reportText += `- **Test Result Creation**: \`com.hcl.onetest.results:1.Namespace::createResult\`\n`;
-            reportText += `- **Bucket ID**: Unique identifier for test execution data\n`;
-            reportText += `- **User Context**: Who initiated the test\n\n`;
-
-            reportText += `### Test Execution Hierarchy:\n`;
-            reportText += `- **Main Test**: \`com.hcl.devops.test.runtime:1.test\`\n`;
-            reportText += `  - **Platform Info**: OS, hostname details\n`;
-            reportText += `  - **Configuration**: Variables, settings, dataset\n`;
-            reportText += `  - **Browser Setup**: Device configuration\n`;
-            reportText += `  - **Test Steps**: Nested step execution\n\n`;
-
-            reportText += `### Step Types Found:\n`;
-            reportText += `- **\`open\`**: Navigate to URL (Amazon.co.uk)\n`;
-            reportText += `- **\`with\`**: Context-based actions with verification\n`;
-            reportText += `- **\`click\`**: Element interactions\n`;
-            reportText += `- **\`type\`**: Text input (search terms)\n`;
-            reportText += `- **\`press\`**: Keyboard actions (Enter key)\n`;
-            reportText += `- **\`verify\`**: Element verification\n\n`;
-
-            reportText += `### Execution Flow Analysis:\n`;
-            reportText += `1. **Platform Setup** ✅ PASS\n`;
-            reportText += `   - Linux environment initialized\n`;
-            reportText += `   - Edge browser (v136.0.3240.50) configured\n\n`;
-
-            reportText += `2. **Site Navigation** ✅ PASS\n`;
-            reportText += `   - Successfully opened Amazon.co.uk\n`;
-            reportText += `   - Duration: ~10 seconds\n\n`;
-
-            reportText += `3. **Search Interaction** ✅ PASS\n`;
-            reportText += `   - Clicked search input field\n`;
-            reportText += `   - Typed search term: "BIWIN Black Opal NV7400 2TB SSD Gen4x4"\n`;
-            reportText += `   - Pressed Enter to search\n\n`;
-
-            reportText += `4. **Search Results Verification** ✅ PASS\n`;
-            reportText += `   - Verified Amazon.co.uk branding present\n`;
-            reportText += `   - Confirmed search results page loaded\n\n`;
-
-            reportText += `5. **Product Selection** ❌ FAIL\n`;
-            reportText += `   - **Failure Type**: ObjNotFound\n`;
-            reportText += `   - **Target Element**: \`html.span\` with parent "107..."\n`;
-            reportText += `   - **Duration**: ~36 seconds before timeout\n`;
-            reportText += `   - **Failure Analysis**: Could not find the expected product element to click\n\n`;
-
-            reportText += `### Failure Details:\n`;
-            reportText += `- **Step**: Click action on product span element\n`;
-            reportText += `- **Reason**: ObjNotFound - Element not present on page\n`;
-            reportText += `- **Impact**: Test execution stopped at step 5/5\n`;
-            reportText += `- **Screenshots Available**: Yes (captured at failure point)\n`;
-            reportText += `- **Stacktrace Available**: Yes (for debugging)\n`;
-            reportText += `- **Metadata Available**: Yes (additional context)\n\n`;
-
-            reportText += `### Debugging Resources:\n`;
-            reportText += `The test log includes URLs for:\n`;
-            reportText += `- 📸 **Screenshots**: Visual state at each step\n`;
-            reportText += `- 🐛 **Stacktraces**: Detailed error information\n`;
-            reportText += `- 📊 **Metadata**: Additional execution context\n\n`;
-
-            reportText += `### Recommended Next Steps:\n`;
-            reportText += `1. **Extract and examine the actual testlog.json** from the downloaded zip\n`;
-            reportText += `2. **Implement zip extraction** using Node.js libraries (yauzl, node-stream-zip)\n`;
-            reportText += `3. **Parse the JSON structure** to create detailed step analysis\n`;
-            reportText += `4. **Access screenshot URLs** for visual debugging\n`;
-            reportText += `5. **Analyze the ObjNotFound failure** - likely a page layout change\n\n`;
-
-            reportText += `## 🔧 Implementation Notes\n`;
-            reportText += `To fully implement this tool:\n`;
-            reportText += `1. Add zip extraction library to dependencies\n`;
-            reportText += `2. Parse testlog.json from extracted archive\n`;
-            reportText += `3. Implement recursive step parsing\n`;
-            reportText += `4. Provide detailed failure analysis\n`;
-            reportText += `5. Generate links to screenshots and metadata\n\n`;
-
-            reportText += `**Status**: ✅ Download successful, ready for full implementation\n`;
-
-            return {
-                content: [{ type: 'text', text: reportText }]
-            };
-
-        } catch (error) {
-            return {
-                content: [{ type: 'text', text: `Error getting test log results: ${error.message}` }]
-            };
+  "get_test_log_results",
+  "Download and analyze test log results from the zip archive",
+  {
+    projectId: z.string().describe("The ID of the project containing the test"),
+    downloadId: z.string().describe("The download ID for the result archive (e.g., from result execution)")
+  },
+  async (args) => {
+    try {
+      if (!keycloakAuth) {
+        const authSuccess = await setupAuthentication();
+        if (!authSuccess) {
+          throw new Error("Authentication failed");
         }
+      }
+
+      const cleanServerURL = serverURL.replace('/#', '');
+      const url = new URL(cleanServerURL);
+      const baseURL = `${url.protocol}//${url.host}`;
+      const headers = await getDefaultHeaders();
+
+      const downloadUrl = `${baseURL}/test/rest/projects/${args.projectId}/downloads/${args.downloadId}`;
+      console.log(`Downloading test results from: ${downloadUrl}`);
+
+      const downloadResponse = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: headers
+      });
+
+      if (!downloadResponse.ok) {
+        throw new Error(`Failed to download results: ${downloadResponse.status} ${downloadResponse.statusText}`);
+      }
+
+      // Wait 2 seconds before processing the zip
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+        const zipChunks = [];
+        for await (const chunk of downloadResponse.body) {
+            zipChunks.push(chunk);
+        }
+        const zipData = Buffer.concat(zipChunks);
+      
+
+      // Extract testlog.json from the zip
+      const directory = await unzipper.Open.buffer(zipData);
+      const testLogFile = directory.files.find(f => f.path.endsWith('testlog.json') && f.type === 'File');
+
+      if (!testLogFile) {
+        throw new Error(`testlog.json not found in archive`);
+      }
+
+      const testLogContent = await testLogFile.buffer();
+      const testLogJSON = JSON.parse(testLogContent.toString('utf-8'));
+
+      // Parse the log as before
+      const results = parseTestLog(testLogJSON);
+
+      let reportText = `# Test Log Results Analysis (Zip Extraction)\n\n`;
+      reportText += `**Project ID**: ${args.projectId}\n`;
+      reportText += `**Download ID**: ${args.downloadId}\n`;
+      reportText += `**Download URL**: ${downloadUrl}\n`;
+      reportText += `**Archive Size**: ${zipData.length} bytes\n\n`;
+
+      reportText += `## ✅ testlog.json extracted and parsed successfully\n`;
+      reportText += `- 📝 Test Summary ID: ${results.summary.id}\n`;
+      reportText += `- 👤 Initiated By: ${results.summary.initiatedByUser || 'Unknown'}\n`;
+      reportText += `- 🧪 Total Steps: ${results.steps.length}\n`;
+      reportText += `- ❌ Failures: ${results.failures.length}\n\n`;
+
+      if (results.failures.length > 0) {
+        reportText += `### ❌ Failure Details\n`;
+        results.failures.forEach((fail, i) => {
+          reportText += `- ${i + 1}. **${fail.name}** (Reason: ${fail.reason || 'N/A'})\n`;
+          if (fail.message) reportText += `   ↳ Message: ${fail.message}\n`;
+          if (fail.stacktrace) reportText += `   ↳ Stacktrace: Present\n`;
+          if (fail.screenshot) reportText += `   ↳ Screenshot: Captured\n`;
+          reportText += `\n`;
+        });
+      }
+
+      return {
+        content: [{ type: 'text', text: reportText }]
+      };
+
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error getting test log results: ${error.message}` }]
+      };
     }
+  }
 );
 
 const transport = new StdioServerTransport();

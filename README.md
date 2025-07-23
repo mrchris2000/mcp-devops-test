@@ -71,6 +71,7 @@ TEST_SERVER_URL=https://your-test-server.com/test
 TEST_TEAMSPACE_ID=your-teamspace-id-here
 KEYCLOAK_CLIENT_ID=your-keycloak-client-id
 KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
+KEYCLOAK_REALM=your-keycloak-realm  # Optional, defaults to 'devops-automation'
 ```
 
 ### Option 1: Environment Variables
@@ -83,6 +84,7 @@ export TEST_SERVER_URL="https://your-test-server.com/test"
 export TEST_TEAMSPACE_ID="your-teamspace-id-here"
 export KEYCLOAK_CLIENT_ID="your-keycloak-client-id"
 export KEYCLOAK_CLIENT_SECRET="your-keycloak-client-secret"
+export KEYCLOAK_REALM="your-keycloak-realm"  # Optional, defaults to 'devops-automation'
 ```
 
 ### Option 2: Command Line Arguments
@@ -90,7 +92,7 @@ export KEYCLOAK_CLIENT_SECRET="your-keycloak-client-secret"
 Pass configuration as command line arguments:
 
 ```bash
-node src/lib/server.js --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret"
+node src/lib/server.js --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret" --keycloak-realm "your-realm"
 ```
 
 ### Option 3: Environment File
@@ -104,7 +106,21 @@ TEST_SERVER_URL=https://your-test-server.com/test
 TEST_TEAMSPACE_ID=your-teamspace-id-here
 KEYCLOAK_CLIENT_ID=your-keycloak-client-id
 KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
+KEYCLOAK_REALM=your-keycloak-realm  # Optional, defaults to 'devops-automation'
 ```
+
+### Configuration Parameters
+
+| Parameter | Environment Variable | Command Line Argument | Required | Default | Description |
+|-----------|---------------------|----------------------|----------|---------|-------------|
+| Access Token | `TEST_ACCESS_TOKEN` | `--token` | ✅ Yes | None | Base64 encoded personal access token for authentication |
+| Server URL | `TEST_SERVER_URL` | `--server-url` | ✅ Yes | None | URL to your Test server instance |
+| Teamspace ID | `TEST_TEAMSPACE_ID` | `--teamspace-id` | ✅ Yes | None | Your Test teamspace identifier |
+| Keycloak Client ID | `KEYCLOAK_CLIENT_ID` | `--keycloak-client-id` | ❌ No | None | Keycloak client ID for authentication |
+| Keycloak Client Secret | `KEYCLOAK_CLIENT_SECRET` | `--keycloak-client-secret` | ❌ No | None | Keycloak client secret for authentication |
+| Keycloak Realm | `KEYCLOAK_REALM` | `--keycloak-realm` | ❌ No | `devops-automation` | Keycloak realm name for authentication |
+
+**Note**: The Keycloak parameters are optional. If not provided, the server will use environment-based Keycloak configuration or fall back to default settings.
 
 ## Installation
 
@@ -118,14 +134,14 @@ KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
 You can run the MCP server directly without installation:
 
 ```bash
-npx @securedevops/mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret"
+npx @securedevops/mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret" --keycloak-realm "your-realm"
 ```
 
 ### Option 2: Global Installation
 
 ```bash
 npm install -g @securedevops/mcp-devops-test
-mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret"
+mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret" --keycloak-realm "your-realm"
 ```
 
 ### Option 3: Local Development
@@ -164,7 +180,8 @@ Add the following to your Claude Desktop MCP configuration:
         "--server-url", "https://your-server.com/test",
         "--teamspace-id", "your_teamspace_id",
         "--keycloak-client-id", "your_client_id",
-        "--keycloak-client-secret", "your_client_secret"
+        "--keycloak-client-secret", "your_client_secret",
+        "--keycloak-realm", "your_realm"
       ]
     }
   }
@@ -184,7 +201,8 @@ Add the following to your Claude Desktop MCP configuration:
         "TEST_SERVER_URL": "https://your-server.com/test",
         "TEST_TEAMSPACE_ID": "your_teamspace_id",
         "KEYCLOAK_CLIENT_ID": "your_client_id",
-        "KEYCLOAK_CLIENT_SECRET": "your_client_secret"
+        "KEYCLOAK_CLIENT_SECRET": "your_client_secret",
+        "KEYCLOAK_REALM": "your_realm"
       }
     }
   }
@@ -206,7 +224,8 @@ Add the following to your Claude Desktop MCP configuration:
         "TEST_SERVER_URL": "https://your-server.com/test",
         "TEST_TEAMSPACE_ID": "your_teamspace_id",
         "KEYCLOAK_CLIENT_ID": "your_client_id",
-        "KEYCLOAK_CLIENT_SECRET": "your_client_secret"
+        "KEYCLOAK_CLIENT_SECRET": "your_client_secret",
+        "KEYCLOAK_REALM": "your_realm"
       }
     }
   }
@@ -226,7 +245,8 @@ Or with command line arguments:
         "--server-url", "https://your-server.com/test",
         "--teamspace-id", "your_teamspace_id",
         "--keycloak-client-id", "your_client_id",
-        "--keycloak-client-secret", "your_client_secret"
+        "--keycloak-client-secret", "your_client_secret",
+        "--keycloak-realm", "your_realm"
       ]
     }
   }
