@@ -234,11 +234,9 @@ server.tool(
                 }
             }
 
-            // Build API URL
+            // Build API URL - use the same approach as authentication
             const cleanServerURL = serverURL.replace('/#', '');
-            const url = new URL(cleanServerURL);
-            const baseURL = `${url.protocol}//${url.host}`;
-            const apiUrl = `${baseURL}/test/rest/projects/?member=true&archived=false`;
+            const apiUrl = `${cleanServerURL}/rest/projects/?member=true&archived=false`;
             
             const headers = await getDefaultHeaders();
             const response = await fetch(apiUrl, {

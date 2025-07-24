@@ -14,7 +14,7 @@ export class SimpleAuth {
         
         // Derive base URL from server URL
         this.baseURL = this.extractBaseURL(this.serverURL);
-        this.tokenEndpoint = `${this.baseURL}/rest/tokens`;
+        this.tokenEndpoint = `${this.baseURL}/rest/tokens/`; // Note: trailing slash like in Groovy
         
         // Token storage
         this.accessToken = null;
@@ -32,6 +32,11 @@ export class SimpleAuth {
     extractBaseURL(serverURL) {
         const cleanURL = serverURL.replace('/#', '');
         const url = new URL(cleanURL);
+        // For DevOps Test, we need to keep the /test path prefix
+        if (cleanURL.includes('/test')) {
+            // Keep the /test prefix for the token endpoint
+            return cleanURL.replace(/\/$/, ''); // Remove trailing slash if present
+        }
         return `${url.protocol}//${url.host}`;
     }
     
@@ -49,10 +54,11 @@ export class SimpleAuth {
     }
     
     /**
-     * Authenticate using personal access token via /rest/tokens
+     * Authenticate using refresh token via /rest/tokens/ endpoint
+     * Based on working TokenUtil.groovy implementation
      */
     async authenticateWithPersonalToken() {
-        console.log('🔐 Starting authentication with personal access token...');
+        console.log('🔐 Starting authentication with refresh token...');
         
         if (!this.personalAccessToken) {
             throw new Error('Personal access token is required for authentication');
@@ -61,18 +67,19 @@ export class SimpleAuth {
         console.log(`📡 Making token request to: ${this.tokenEndpoint}`);
         
         try {
+            // Use the exact same approach as the working Groovy implementation
+            const formData = new URLSearchParams();
+            formData.append('refresh_token', this.personalAccessToken);
+            
             const response = await fetch(this.tokenEndpoint, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Authorization': `Bearer ${this.personalAccessToken}`
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    // Note: No Authorization header needed - just send refresh_token in form data
                 },
-                body: JSON.stringify({
-                    // Include any required payload for token exchange
-                    // This may need to be adjusted based on the API requirements
-                })
+                body: formData
             });
             
             console.log(`📊 Response: ${response.status} ${response.statusText}`);
@@ -80,13 +87,11 @@ export class SimpleAuth {
             if (response.ok) {
                 const data = await response.json();
                 
-                // For simple auth, we might just use the personal access token directly
-                // or the API might return a new token
+                // Extract access token from response
                 if (data.access_token || data.token) {
                     this.accessToken = data.access_token || data.token;
                 } else {
-                    // If no token in response, use the personal access token directly
-                    this.accessToken = this.personalAccessToken;
+                    throw new Error('No access token in response');
                 }
                 
                 // Calculate token expiry if provided
@@ -115,19 +120,9 @@ export class SimpleAuth {
                 console.error(`   Status: ${response.status} ${response.statusText}`);
                 console.error(`   Error: ${errorText}`);
                 
-                // For 401/403, try using the personal access token directly
-                if (response.status === 401 || response.status === 403) {
-                    console.log('⚠️  Token endpoint authentication failed, using personal access token directly...');
-                    this.accessToken = this.personalAccessToken;
-                    this.tokenExpiry = Date.now() + (3600 * 1000); // 1 hour default
-                    
-                    return {
-                        success: true,
-                        accessToken: this.accessToken,
-                        expiresIn: 3600,
-                        tokenType: 'Bearer',
-                        note: 'Using personal access token directly'
-                    };
+                // Handle specific error cases
+                if (response.status === 403) {
+                    throw new Error('License or authorization error - request returned 403. Please check the license and permissions.');
                 }
                 
                 let errorDetails;
@@ -148,17 +143,10 @@ export class SimpleAuth {
         } catch (error) {
             console.error('❌ Network error during authentication:', error.message);
             
-            // Fallback: use personal access token directly
-            console.log('⚠️  Network error, using personal access token directly as fallback...');
-            this.accessToken = this.personalAccessToken;
-            this.tokenExpiry = Date.now() + (3600 * 1000); // 1 hour default
-            
             return {
-                success: true,
-                accessToken: this.accessToken,
-                expiresIn: 3600,
-                tokenType: 'Bearer',
-                note: 'Fallback: using personal access token directly due to network error'
+                success: false,
+                error: 'network_error',
+                errorDescription: error.message
             };
         }
     }
