@@ -69,9 +69,6 @@ Create a `.env` file in the project root and add your configuration values:
 TEST_ACCESS_TOKEN=your_base64_encoded_token_here
 TEST_SERVER_URL=https://your-test-server.com/test
 TEST_TEAMSPACE_ID=your-teamspace-id-here
-KEYCLOAK_CLIENT_ID=your-keycloak-client-id
-KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
-KEYCLOAK_REALM=your-keycloak-realm  # Optional, defaults to 'devops-automation'
 ```
 
 ### Option 1: Environment Variables
@@ -82,9 +79,6 @@ Set the following environment variables:
 export TEST_ACCESS_TOKEN="your_base64_encoded_token_here"
 export TEST_SERVER_URL="https://your-test-server.com/test"
 export TEST_TEAMSPACE_ID="your-teamspace-id-here"
-export KEYCLOAK_CLIENT_ID="your-keycloak-client-id"
-export KEYCLOAK_CLIENT_SECRET="your-keycloak-client-secret"
-export KEYCLOAK_REALM="your-keycloak-realm"  # Optional, defaults to 'devops-automation'
 ```
 
 ### Option 2: Command Line Arguments
@@ -92,7 +86,7 @@ export KEYCLOAK_REALM="your-keycloak-realm"  # Optional, defaults to 'devops-aut
 Pass configuration as command line arguments:
 
 ```bash
-node src/lib/server.js --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret" --keycloak-realm "your-realm"
+node src/lib/server.js --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id"
 ```
 
 ### Option 3: Environment File
@@ -104,9 +98,6 @@ Create a `.env` file in the project root with your values:
 TEST_ACCESS_TOKEN=your_base64_encoded_token_here
 TEST_SERVER_URL=https://your-test-server.com/test
 TEST_TEAMSPACE_ID=your-teamspace-id-here
-KEYCLOAK_CLIENT_ID=your-keycloak-client-id
-KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
-KEYCLOAK_REALM=your-keycloak-realm  # Optional, defaults to 'devops-automation'
 ```
 
 ### Configuration Parameters
@@ -116,11 +107,8 @@ KEYCLOAK_REALM=your-keycloak-realm  # Optional, defaults to 'devops-automation'
 | Access Token | `TEST_ACCESS_TOKEN` | `--token` | ✅ Yes | None | Base64 encoded personal access token for authentication |
 | Server URL | `TEST_SERVER_URL` | `--server-url` | ✅ Yes | None | URL to your Test server instance |
 | Teamspace ID | `TEST_TEAMSPACE_ID` | `--teamspace-id` | ✅ Yes | None | Your Test teamspace identifier |
-| Keycloak Client ID | `KEYCLOAK_CLIENT_ID` | `--keycloak-client-id` | ❌ No | None | Keycloak client ID for authentication |
-| Keycloak Client Secret | `KEYCLOAK_CLIENT_SECRET` | `--keycloak-client-secret` | ❌ No | None | Keycloak client secret for authentication |
-| Keycloak Realm | `KEYCLOAK_REALM` | `--keycloak-realm` | ❌ No | `devops-automation` | Keycloak realm name for authentication |
 
-**Note**: The Keycloak parameters are optional. If not provided, the server will use environment-based Keycloak configuration or fall back to default settings.
+**Note**: The server now uses a simplified authentication system that calls the `/rest/tokens` endpoint instead of Keycloak. This requires only your personal access token for authentication.
 
 ## Installation
 
@@ -134,14 +122,14 @@ KEYCLOAK_REALM=your-keycloak-realm  # Optional, defaults to 'devops-automation'
 You can run the MCP server directly without installation:
 
 ```bash
-npx @securedevops/mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret" --keycloak-realm "your-realm"
+npx @securedevops/mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id"
 ```
 
 ### Option 2: Global Installation
 
 ```bash
 npm install -g @securedevops/mcp-devops-test
-mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id" --keycloak-client-id "your-client-id" --keycloak-client-secret "your-client-secret" --keycloak-realm "your-realm"
+mcp-devops-test --token "your_token" --server-url "https://your-server.com/test" --teamspace-id "your-teamspace-id"
 ```
 
 ### Option 3: Local Development
@@ -178,10 +166,7 @@ Add the following to your Claude Desktop MCP configuration:
         "@securedevops/mcp-devops-test",
         "--token", "your_token_here",
         "--server-url", "https://your-server.com/test",
-        "--teamspace-id", "your_teamspace_id",
-        "--keycloak-client-id", "your_client_id",
-        "--keycloak-client-secret", "your_client_secret",
-        "--keycloak-realm", "your_realm"
+        "--teamspace-id", "your_teamspace_id"
       ]
     }
   }
@@ -199,10 +184,7 @@ Add the following to your Claude Desktop MCP configuration:
       "env": {
         "TEST_ACCESS_TOKEN": "your_token_here",
         "TEST_SERVER_URL": "https://your-server.com/test",
-        "TEST_TEAMSPACE_ID": "your_teamspace_id",
-        "KEYCLOAK_CLIENT_ID": "your_client_id",
-        "KEYCLOAK_CLIENT_SECRET": "your_client_secret",
-        "KEYCLOAK_REALM": "your_realm"
+        "TEST_TEAMSPACE_ID": "your_teamspace_id"
       }
     }
   }
@@ -222,10 +204,7 @@ Add the following to your Claude Desktop MCP configuration:
       "env": {
         "TEST_ACCESS_TOKEN": "your_token_here",
         "TEST_SERVER_URL": "https://your-server.com/test",
-        "TEST_TEAMSPACE_ID": "your_teamspace_id",
-        "KEYCLOAK_CLIENT_ID": "your_client_id",
-        "KEYCLOAK_CLIENT_SECRET": "your_client_secret",
-        "KEYCLOAK_REALM": "your_realm"
+        "TEST_TEAMSPACE_ID": "your_teamspace_id"
       }
     }
   }
@@ -243,10 +222,7 @@ Or with command line arguments:
         "/path/to/mcp-devops-test/src/lib/server.js",
         "--token", "your_token_here",
         "--server-url", "https://your-server.com/test",
-        "--teamspace-id", "your_teamspace_id",
-        "--keycloak-client-id", "your_client_id",
-        "--keycloak-client-secret", "your_client_secret",
-        "--keycloak-realm", "your_realm"
+        "--teamspace-id", "your_teamspace_id"
       ]
     }
   }
