@@ -5,7 +5,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { config as loadEnv } from 'dotenv';
-import { createKeycloakAuthFromEnv } from './keycloak-auth.js';
+import { createSimpleAuthFromEnv } from './simple-auth.js';
 import unzipper from 'unzipper';
 import stream from 'stream';
 
@@ -32,15 +32,6 @@ function getConfig() {
             case '--teamspace-id':
                 config.teamspaceId = value;
                 break;
-            case '--keycloak-client-id':
-                config.keycloakClientId = value;
-                break;
-            case '--keycloak-client-secret':
-                config.keycloakClientSecret = value;
-                break;
-            case '--keycloak-realm':
-                config.keycloakRealm = value;
-                break;
         }
     }
     
@@ -48,9 +39,6 @@ function getConfig() {
     const personal_access_token_string = config.token || process.env.TEST_ACCESS_TOKEN;
     const serverURL = config.serverUrl || process.env.TEST_SERVER_URL;
     const teamspaceID = config.teamspaceId || process.env.TEST_TEAMSPACE_ID;
-    const keycloakClientId = config.keycloakClientId || process.env.KEYCLOAK_CLIENT_ID;
-    const keycloakClientSecret = config.keycloakClientSecret || process.env.KEYCLOAK_CLIENT_SECRET;
-    const keycloakRealm = config.keycloakRealm || process.env.KEYCLOAK_REALM || 'devops-automation';
     
     // Validate required configuration
     if (!personal_access_token_string) {
@@ -66,15 +54,12 @@ function getConfig() {
     return { 
         personal_access_token_string, 
         serverURL, 
-        teamspaceID, 
-        keycloakClientId, 
-        keycloakClientSecret,
-        keycloakRealm
+        teamspaceID
     };
 }
 
 // Get configuration at startup
-const { personal_access_token_string, serverURL, teamspaceID, keycloakClientId, keycloakClientSecret, keycloakRealm } = getConfig();
+const { personal_access_token_string, serverURL, teamspaceID } = getConfig();
 
 // Create an MCP server
 const server = new McpServer({
@@ -84,43 +69,24 @@ const server = new McpServer({
 var globalCookies = "";
 
 // Global authentication instance
-let keycloakAuth = null;
+let simpleAuth = null;
 
-// Initialize Keycloak authentication
+// Initialize Simple authentication
 async function initializeAuthentication() {
     try {
-        // If we have MCP parameters, use them; otherwise fall back to environment variables
-        if (keycloakClientId || keycloakClientSecret) {
-            console.log('Using Keycloak configuration from MCP parameters');
-            
-            // Create custom config with MCP parameters
-            const config = {
-                serverURL: serverURL,
-                realm: keycloakRealm,
-                clientId: keycloakClientId || process.env.KEYCLOAK_CLIENT_ID || 'testserver',
-                clientSecret: keycloakClientSecret || process.env.KEYCLOAK_CLIENT_SECRET,
-                offlineToken: personal_access_token_string
-            };
-            
-            // Import the KeycloakAuth class directly
-            const { KeycloakAuth } = await import('./keycloak-auth.js');
-            keycloakAuth = new KeycloakAuth(config);
-        } else {
-            console.log('Using Keycloak configuration from environment variables');
-            keycloakAuth = createKeycloakAuthFromEnv();
-        }
-        
-        console.log('✅ Keycloak authentication initialized');
+        console.log('Using Simple authentication with /rest/tokens endpoint');
+        simpleAuth = createSimpleAuthFromEnv();
+        console.log('✅ Simple authentication initialized');
         return true;
     } catch (error) {
-        console.error('❌ Failed to initialize Keycloak authentication:', error.message);
+        console.error('❌ Failed to initialize Simple authentication:', error.message);
         return false;
     }
 }
 
-// Setup authentication - using Keycloak module
+// Setup authentication - using Simple auth module
 async function setupAuthentication() {
-    if (!keycloakAuth) {
+    if (!simpleAuth) {
         const initSuccess = await initializeAuthentication();
         if (!initSuccess) {
             return false;
@@ -128,11 +94,14 @@ async function setupAuthentication() {
     }
     
     try {
-        console.log('🔐 Setting up authentication using Keycloak...');
-        const result = await keycloakAuth.authenticateWithOfflineToken();
+        console.log('🔐 Setting up authentication using /rest/tokens...');
+        const result = await simpleAuth.authenticateWithPersonalToken();
         
         if (result.success) {
             console.log('✅ Authentication successful - access token obtained');
+            if (result.note) {
+                console.log(`   Note: ${result.note}`);
+            }
             return true;
         } else {
             console.error('❌ Authentication failed:', result.error);
@@ -145,11 +114,10 @@ async function setupAuthentication() {
     }
 }
 
-// Get default headers for API requests (equivalent to C# HttpClient default headers)
 // Get default headers for API requests
 async function getDefaultHeaders() {
     try {
-        const authHeader = await keycloakAuth.getAuthHeader();
+        const authHeader = await simpleAuth.getAuthHeader();
         return {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
@@ -259,7 +227,7 @@ server.tool(
     async () => {
         try {
             // Setup authentication if not already done
-            if (!keycloakAuth) {
+            if (!simpleAuth) {
                 const authSuccess = await setupAuthentication();
                 if (!authSuccess) {
                     throw new Error("Authentication failed");
@@ -319,7 +287,7 @@ server.tool(
     async (args) => {
         try {
             // Setup authentication if not already done
-            if (!keycloakAuth) {
+            if (!simpleAuth) {
                 const authSuccess = await setupAuthentication();
                 if (!authSuccess) {
                     throw new Error("Authentication failed");
@@ -416,7 +384,7 @@ server.tool(
     async (args) => {
         try {
             // Setup authentication if not already done
-            if (!keycloakAuth) {
+            if (!simpleAuth) {
                 const authSuccess = await setupAuthentication();
                 if (!authSuccess) {
                     throw new Error("Authentication failed");
@@ -555,7 +523,7 @@ server.tool(
     async (args) => {
         try {
             // Setup authentication if not already done
-            if (!keycloakAuth) {
+            if (!simpleAuth) {
                 const authSuccess = await setupAuthentication();
                 if (!authSuccess) {
                     throw new Error("Authentication failed");
@@ -877,7 +845,7 @@ server.tool(
   },
   async (args) => {
     try {
-      if (!keycloakAuth) {
+      if (!simpleAuth) {
         const authSuccess = await setupAuthentication();
         if (!authSuccess) {
           throw new Error("Authentication failed");
@@ -940,7 +908,7 @@ server.tool(
   },
   async (args) => {
     try {
-      if (!keycloakAuth) {
+      if (!simpleAuth) {
         const authSuccess = await setupAuthentication();
         if (!authSuccess) {
           throw new Error("Authentication failed");
