@@ -1,6 +1,6 @@
 {
   "name": "@securedevops/mcp-devops-test",
-  "version": "0.1.30",
+  "version": "0.2.30",
   "description": "A Model Context Protocol (MCP) server for DevOps Test work item management",
   "type": "module",
   "main": "src/lib/server.js",
